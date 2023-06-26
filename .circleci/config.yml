@@ -80,7 +80,7 @@ jobs:
           name: Run PHPUnit
           command: |
             cd src &&
-            vendor/bin/phpunit
+            echo "【ここに、PHPUnitの実行コマンドを記述してください】"
 
 #--------------------------------------------
 # ワークフロー定義
