@@ -1,0 +1,74 @@
+version: 2.1
+
+executors:
+  demo-executor:
+    docker:
+      - image: cimg/php:8.2.7
+        environment:
+          MYSQL_ROOT_PASSWORD:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_USER: db_testing
+          MYSQL_PASSWORD: db_testing
+          MYSQL_DATABASE: db_testing
+      - image: cimg/mysql:8.0.28
+        command: mysqld --default-authentication-plugin=mysql_native_password
+    working_directory: ~/work
+
+commands:
+  composer_install:
+    steps:
+      - restore_cache:
+          keys:
+            - v1-composer-deps-{{ checksum "src/composer.json" }}-{{ .Branch }}
+            - v1-composer-deps-{{ checksum "src/composer.json" }}
+            - v1-composer-deps
+      - run:
+          name: Install PHP libraries
+          command: |
+            cd src &&
+            composer install -n --prefer-dist &&
+            composer dump-autoload
+      - save_cache:
+          key: v1-composer-deps-{{ checksum "src/composer.json" }}-{{ .Branch }}
+          paths:
+            - src/vendor
+
+jobs:
+  setup:
+    executor: demo-executor
+    steps:
+      - checkout
+      - run:
+          name: Update apt-get
+          command: sudo apt-get update
+      - composer_install
+      - persist_to_workspace:
+          root: .
+          paths:
+            - src/vendor
+
+  exec_test:
+    executor: demo-executor
+    steps:
+      - checkout
+      - attach_workspace:
+          at: .
+      - run:
+          name: Wait For Database Container Up
+          command: |
+            dockerize -wait \
+            tcp://127.0.0.1:3306 -timeout 120s
+      - run:
+          name: Run PHPUnit circle_testing
+          command: |
+            cd src &&
+            vendor/bin/phpunit
+
+workflows:
+  version: 2
+  ci_test:
+    jobs:
+      - setup
+      - exec_test:
+          requires:
+            - setup
