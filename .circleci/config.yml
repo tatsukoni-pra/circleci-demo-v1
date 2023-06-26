@@ -1,8 +1,12 @@
 version: 2.1
 
+#------------
+# 実行環境定義
+#------------
 executors:
   demo-executor:
     docker:
+      # プライマリイメージ = 定義されたコマンドが実行される環境
       - image: cimg/php:8.2.7
         environment:
           MYSQL_ROOT_PASSWORD:
@@ -10,13 +14,21 @@ executors:
           MYSQL_USER: db_testing
           MYSQL_PASSWORD: db_testing
           MYSQL_DATABASE: db_testing
+      # セカンダリイメージ = MySQL
+      # コンテナ上でコマンドは実行できないが、共通のネットワーク上で起動するため、ネットワーク越しに接続可能
       - image: cimg/mysql:8.0.28
         command: mysqld --default-authentication-plugin=mysql_native_password
     working_directory: ~/work
 
+#-----------------------------
+# 共通利用コマンド
+# 複数のジョブで使い回すことができる
+#-----------------------------
 commands:
   composer_install:
     steps:
+      # composer.jsonの中身に変更がなければ、キャッシュから復元する
+      # composer.jsonの中身に変更があれば、キャッシュを復元せず、次のinstallコマンドを実行する
       - restore_cache:
           keys:
             - v1-composer-deps-{{ checksum "src/composer.json" }}-{{ .Branch }}
@@ -28,11 +40,17 @@ commands:
             cd src &&
             composer install -n --prefer-dist &&
             composer dump-autoload
+      # composer.jsonの中身に変更があれば、キャッシュを作成する
       - save_cache:
           key: v1-composer-deps-{{ checksum "src/composer.json" }}-{{ .Branch }}
           paths:
             - src/vendor
 
+#-------------------------------------------------------------
+# 実行ジョブ定義
+# 実行ジョブ = ステップ(コマンド)の1つ以上の集合のこと
+# ジョブを開始するたび、実行環境がゼロから構築される & 終了時に破棄される
+#-------------------------------------------------------------
 jobs:
   setup:
     executor: demo-executor
@@ -46,7 +64,6 @@ jobs:
           root: .
           paths:
             - src/vendor
-
   exec_test:
     executor: demo-executor
     steps:
@@ -59,11 +76,16 @@ jobs:
             dockerize -wait \
             tcp://127.0.0.1:3306 -timeout 120s
       - run:
-          name: Run PHPUnit circle_testing
+          # ここに、PHPUnitの実行コマンドを記述する
+          name: Run PHPUnit
           command: |
             cd src &&
             vendor/bin/phpunit
 
+#--------------------------------------------
+# ワークフロー定義
+# ワークフロー = ジョブの実行順序を定めたルールのこと
+#--------------------------------------------
 workflows:
   version: 2
   ci_test:
